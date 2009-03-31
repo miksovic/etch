@@ -46,6 +46,8 @@ public class TestYamlConfig
 	private static final String EMPTY = "services/config/empty";
 	
 	private static final String DIR = "services/config/dir";
+
+	private static final String UPDATE = "services/config/update";
 	
 	private final MyConfigurationClient client = new MyConfigurationClient();
 	
@@ -1172,6 +1174,264 @@ public class TestYamlConfig
 		Assert.assertTrue( client.changed.contains( x ) );
 		Assert.assertTrue( client.changed.contains( y ) );
 		Assert.assertEquals( 2, client.changed.size() );
+	}
+	
+	/** @throws Exception */
+	@Test
+	public void update0() throws Exception
+	{
+		YamlConfig c = new YamlConfig( client, UPDATE+0 );
+		client.setServer( c );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 5, c.size( root ) );
+		Assert.assertEquals( 2, c.getIntegerPath( root, "foo" ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( list( 2, 3, 4 ), c.getListPath( root, "array", null ) );
+		Assert.assertEquals( map( "a", 5, "b", 6, "c", 7 ), c.getMapPath( root, "map", null ) );
+		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), list( 1, 2, 3 ), "bear" ), c.getListPath( root, "list", null ) );
+	}
+	
+	private List<?> list( Object ... objs )
+	{
+		List<Object> list = new ArrayList<Object>( objs.length );
+		for (Object obj: objs)
+			list.add( obj );
+		return list;
+	}
+	
+	private Map<?, ?> map( Object ... objs )
+	{
+		Map<String, Object> map = new HashMap<String, Object>(
+			(objs.length * 2 + 2) / 3 );
+		for (int i = 0; i < objs.length; i += 2)
+			map.put( (String) objs[i], objs[i + 1] );
+		return map;
+	}
+
+	/** @throws Exception */
+	@Test
+	public void update1() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+1 );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 5, c.size( root ) );
+		Assert.assertEquals( 3, c.getIntegerPath( root, "foo" ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( list( 2, 3, 4 ), c.getListPath( root, "array", null ) );
+		Assert.assertEquals( map( "a", 5, "b", 6, "c", 7 ), c.getMapPath( root, "map", null ) );
+		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), list( 1, 2, 3 ), "bear" ), c.getListPath( root, "list", null ) );
+	}
+	
+	private YamlConfig setupUpdate( String updateConfig ) throws Exception
+	{
+		YamlConfig c = new YamlConfig( client, UPDATE+0 );
+		client.setServer( c );
+		Object root = c.getRoot();
+		
+		c.setInterval( 50 );
+		c.subscribe( root );
+		c.setConfig( updateConfig );
+		Thread.sleep( 1000 );
+		c.unsubscribeAll();
+		
+		return c;
+	}
+
+	/** @throws Exception */
+	@Test
+	public void update2() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+2 );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 6, c.size( root ) );
+		Assert.assertEquals( 2, c.getIntegerPath( root, "foo" ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( list( 2, 3, 4 ), c.getListPath( root, "array", null ) );
+		Assert.assertEquals( map( "a", 5, "b", 6, "c", 7 ), c.getMapPath( root, "map", null ) );
+		Assert.assertEquals( 3, c.getIntegerPath( root, "baz" ) );
+		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), list( 1, 2, 3 ), "bear" ), c.getListPath( root, "list", null ) );
+	}
+
+	/** @throws Exception */
+	@Test
+	public void update3() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+3 );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 4, c.size( root ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( list( 2, 3, 4 ), c.getListPath( root, "array", null ) );
+		Assert.assertEquals( map( "a", 5, "b", 6, "c", 7 ), c.getMapPath( root, "map", null ) );
+		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), list( 1, 2, 3 ), "bear" ), c.getListPath( root, "list", null ) );
+	}
+
+	/** @throws Exception */
+	@Test
+	public void update4() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+4 );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 5, c.size( root ) );
+		Assert.assertEquals( 2, c.getIntegerPath( root, "foo" ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( list( 2, 3, 5 ), c.getListPath( root, "array", null ) );
+		Assert.assertEquals( map( "a", 5, "b", 6, "c", 7 ), c.getMapPath( root, "map", null ) );
+		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), list( 1, 2, 3 ), "bear" ), c.getListPath( root, "list", null ) );
+	}
+
+	/** @throws Exception */
+	@Test
+	public void update5() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+5 );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 5, c.size( root ) );
+		Assert.assertEquals( 2, c.getIntegerPath( root, "foo" ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( list( 2, 3, 4, 5 ), c.getListPath( root, "array", null ) );
+		Assert.assertEquals( map( "a", 5, "b", 6, "c", 7 ), c.getMapPath( root, "map", null ) );
+		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), list( 1, 2, 3 ), "bear" ), c.getListPath( root, "list", null ) );
+	}
+
+	/** @throws Exception */
+	@Test
+	public void update6() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+6 );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 5, c.size( root ) );
+		Assert.assertEquals( 2, c.getIntegerPath( root, "foo" ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( list( 2, 3 ), c.getListPath( root, "array", null ) );
+		Assert.assertEquals( map( "a", 5, "b", 6, "c", 7 ), c.getMapPath( root, "map", null ) );
+		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), list( 1, 2, 3 ), "bear" ), c.getListPath( root, "list", null ) );
+	}
+
+	/** @throws Exception */
+	@Test
+	public void update7() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+7 );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 6, c.size( root ) );
+		Assert.assertEquals( 2, c.getIntegerPath( root, "foo" ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( list( 2, 3, 4 ), c.getListPath( root, "array", null ) );
+		Assert.assertEquals( map( "a", 5, "b", 6, "c", 7 ), c.getMapPath( root, "map", null ) );
+		Assert.assertEquals( map( "x", 6, "y", 7, "z", 8 ), c.getMapPath( root, "map1", null ) );
+		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), list( 1, 2, 3 ), "bear" ), c.getListPath( root, "list", null ) );
+	}
+
+	/** @throws Exception */
+	@Test
+	public void update8() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+8 );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 6, c.size( root ) );
+		Assert.assertEquals( 2, c.getIntegerPath( root, "foo" ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( list( 2, 3, 4 ), c.getListPath( root, "array", null ) );
+		Assert.assertEquals( map( "a", 5, "b", 6, "c", 7 ), c.getMapPath( root, "map", null ) );
+		Assert.assertEquals( list( 3, 4, 5 ), c.getListPath( root, "array1", null ) );
+		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), list( 1, 2, 3 ), "bear" ), c.getListPath( root, "list", null ) );
+	}
+
+	/** @throws Exception */
+	@Test
+	public void update9() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+9 );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 4, c.size( root ) );
+		Assert.assertEquals( 2, c.getIntegerPath( root, "foo" ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( list( 2, 3, 4 ), c.getListPath( root, "array", null ) );
+		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), list( 1, 2, 3 ), "bear" ), c.getListPath( root, "list", null ) );
+	}
+
+	/** @throws Exception */
+	@Test
+	public void update10() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+10 );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 4, c.size( root ) );
+		Assert.assertEquals( 2, c.getIntegerPath( root, "foo" ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( map( "a", 5, "b", 6, "c", 7 ), c.getMapPath( root, "map", null ) );
+		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), list( 1, 2, 3 ), "bear" ), c.getListPath( root, "list", null ) );
+	}
+
+	/** @throws Exception */
+	@Test
+	public void update11() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+11 );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 5, c.size( root ) );
+		Assert.assertEquals( 2, c.getIntegerPath( root, "foo" ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( list( 2, 3, 4 ), c.getListPath( root, "array", null ) );
+		Assert.assertEquals( map( "a", 5, "b", 6, "c", 7 ), c.getMapPath( root, "map", null ) );
+		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), map( "d", 8, "e", 9, "f", 10 ), list( 1, 2, 3 ), "bear" ), c.getListPath( root, "list", null ) );
+	}
+
+	/** @throws Exception */
+	@Test
+	public void update12() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+12 );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 5, c.size( root ) );
+		Assert.assertEquals( 2, c.getIntegerPath( root, "foo" ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( list( 2, 3, 4 ), c.getListPath( root, "array", null ) );
+		Assert.assertEquals( map( "a", 5, "b", 6, "c", 7 ), c.getMapPath( root, "map", null ) );
+		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), list( 1, 2, 3 ), list( 4, 5, 6 ), "bear" ), c.getListPath( root, "list", null ) );
+	}
+
+	/** @throws Exception */
+	@Test
+	public void update13() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+13 );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 5, c.size( root ) );
+		Assert.assertEquals( 2, c.getIntegerPath( root, "foo" ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( list( 2, 3, 4 ), c.getListPath( root, "array", null ) );
+		Assert.assertEquals( map( "a", 5, "b", 6, "c", 7 ), c.getMapPath( root, "map", null ) );
+		Assert.assertEquals( list( "fish", list( 1, 2, 3 ), "bear" ), c.getListPath( root, "list", null ) );
+	}
+
+	/** @throws Exception */
+	@Test
+	public void update14() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+14 );
+		Object root = c.getRoot();
+		
+		Assert.assertEquals( 5, c.size( root ) );
+		Assert.assertEquals( 2, c.getIntegerPath( root, "foo" ) );
+		Assert.assertEquals( 4, c.getIntegerPath( root, "bar" ) );
+		Assert.assertEquals( list( 2, 3, 4 ), c.getListPath( root, "array", null ) );
+		Assert.assertEquals( map( "a", 5, "b", 6, "c", 7 ), c.getMapPath( root, "map", null ) );
+		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), "bear" ), c.getListPath( root, "list", null ) );
 	}
 	
 	private static class MyConfigurationClient implements ConfigurationClient

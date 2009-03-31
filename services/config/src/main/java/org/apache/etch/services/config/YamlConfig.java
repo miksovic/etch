@@ -581,7 +581,7 @@ public class YamlConfig implements ConfigurationServer
 		}
 	}
 	
-	private final static int INTERVAL = 5*1000;
+	private int INTERVAL = 5*1000;
 	
 	private final static int FAIL_INTERVAL = 60*1000;
 
@@ -668,6 +668,15 @@ public class YamlConfig implements ConfigurationServer
 		return c;
 	}
 	
+	/**
+	 * This is purely for testing.
+	 */
+	void setConfig( String name ) throws Exception
+	{
+		file = mkfile( name );
+		lastModified = Long.MIN_VALUE;
+	}
+	
 	private void updateConfig() throws ConfigurationException
 	{
 		if (file.lastModified() != lastModified)
@@ -702,15 +711,15 @@ public class YamlConfig implements ConfigurationServer
 	private int importObject( List<Conf> c, Integer parent, Object nameOrIndex,
 		Object value )
 	{
-		if (value instanceof List)
+		if (valueIsList( value ))
 		{
 			return importList( c, parent, nameOrIndex, (List<?>) value );
 		}
-		else if (value instanceof Map)
+		else if (valueIsMap( value ))
 		{
 			return importMap( c, parent, nameOrIndex, (Map<?, ?>) value );
 		}
-		else if (isScalar( value ))
+		else if (valueIsScalar( value ))
 		{
 			int k = c.size();
 			c.add( new Conf( parent, nameOrIndex, value ) );
@@ -723,20 +732,27 @@ public class YamlConfig implements ConfigurationServer
 		}
 	}
 	
-	private static boolean isScalar( Object value )
+	private static boolean valueIsScalar( Object value )
 	{
 		return value instanceof Boolean || value instanceof Number ||
 			value instanceof String || value instanceof Date;
+	}
+
+	private boolean valueIsList( Object value )
+	{
+		return value instanceof List;
+	}
+
+	private boolean valueIsMap( Object value )
+	{
+		return value instanceof Map;
 	}
 
 	private void updateObject( List<Conf> newConfigs, Set<Integer> newSubs,
 		List<Integer> changeSet, int iid, Integer parent, Object nameOrIndex,
 		Object value )
 	{
-		// TODO implement this.
-		if (true) return;
-		
-		Conf c = getConf0( iid );
+		Conf c = newConfigs.get( iid );
 		
 		Assertion.check( (parent == null && c.parent == null) ||
 			(parent != null && c.parent != null && parent.equals( c.parent )),
@@ -744,28 +760,80 @@ public class YamlConfig implements ConfigurationServer
 		
 		Assertion.check( (nameOrIndex == null && c.nameOrIndex == null) ||
 			(nameOrIndex != null && c.nameOrIndex != null && nameOrIndex.equals( c.nameOrIndex )),
-			"names match" );
+			"nameOrIndex match" );
 		
-		if (value instanceof List)
+		if (valueIsList( value ))
 		{
-			// return updateList( changeSet, parent, name, (List<?>) value, c.value );
-			return;
-		}
-		else if (value instanceof Map)
-		{
-			// return updateMap( changeSet, parent, name, (Map<?, ?>) value );
-		}
-		else if (isScalar( value ))
-		{
-			if ((value == null && c.value == null) ||
-				(value != null && c.value != null && value.equals( c.value )))
+			if (c.isList())
+			{
+				updateList( newConfigs, newSubs, changeSet, iid, parent, nameOrIndex, (List<?>) value, c );
 				return;
-		}
-		else
-		{
+			}
+			if (c.isMap())
+			{
+				destroyMap( newConfigs, iid, c );
+				importList( newConfigs, newSubs, changeSet, iid, parent, nameOrIndex, (List<?>) value );
+				return;
+			}
+			if (c.isScalar())
+			{
+				importList( newConfigs, newSubs, changeSet, iid, parent, nameOrIndex, (List<?>) value );
+				return;
+			}
 			throw new IllegalArgumentException(
-				"don't know how to update type "+value.getClass() );
+				"don't know how to update to list from type " + c.value.getClass() );
 		}
+		
+		if (valueIsMap( value ))
+		{
+			if (c.isMap())
+			{
+				updateMap( newConfigs, newSubs, changeSet, iid, parent, nameOrIndex, (Map<?, ?>) value, c );
+				return;
+			}
+			if (c.isList())
+			{
+				destroyList( newConfigs, iid, c );
+				importMap( newConfigs, newSubs, changeSet, iid, parent, nameOrIndex, (Map<?, ?>) value );
+				return;
+			}
+			if (c.isScalar())
+			{
+				importMap( newConfigs, newSubs, changeSet, iid, parent, nameOrIndex, (Map<?, ?>) value );
+				return;
+			}
+			throw new IllegalArgumentException(
+				"don't know how to update to map from type " + c.value.getClass() );
+		}
+		
+		if (valueIsScalar( value ))
+		{
+			if (c.isMap())
+			{
+				destroyMap( newConfigs, iid, c );
+				newConfigs.set( iid, new Conf( parent, nameOrIndex, value ) );
+				return;
+			}
+			
+			if (c.isList())
+			{
+				destroyList( newConfigs, iid, c );
+				newConfigs.set( iid, new Conf( parent, nameOrIndex, value ) );
+				return;
+			}
+			
+			if (c.isScalar())
+			{
+				if (value.equals( c.value ))
+					return;
+				
+				newConfigs.set( iid, new Conf( parent, nameOrIndex, value ) );
+				return;
+			}
+		}
+		
+		throw new IllegalArgumentException( "don't know how to update to " +
+			value.getClass() + " from " + c.value.getClass() );
 	}
 
 	private int importList( List<Conf> c, Integer parent, Object nameOrIndex, List<?> value )
@@ -780,12 +848,59 @@ public class YamlConfig implements ConfigurationServer
 		
 		return k;
 	}
+
+	private void importList( List<Conf> newConfigs, Set<Integer> newSubs,
+		List<Integer> changeSet, int iid, Integer parent, Object nameOrIndex,
+		List<?> value )
+	{
+		List<Integer> v = new ArrayList<Integer>( value.size() );
+		newConfigs.set( iid, new Conf( parent, nameOrIndex, v ) );
+		
+		int i = 0;
+		for (Object o: value )
+			v.add( importObject( newConfigs, iid, i++, o ) );
+	}
+
+	private void updateList( List<Conf> newConfigs, Set<Integer> newSubs,
+		List<Integer> changeSet, int iid, Integer parent, Object nameOrIndex,
+		List<?> value, Conf c )
+	{
+		int n = Math.max( value.size(), c.size() );
+		for (int i = 0; i < n; i++)
+		{
+			if (i < value.size() && i < c.size())
+			{
+				updateObject( newConfigs, newSubs, changeSet, c.list().get( i ), iid, i, value.get( i ) );
+			}
+			else if (i < c.size()) // ran out of new values
+			{
+				destroy( newConfigs, c.list().get( i ) );
+				c.list().set( i, null );
+			}
+			else // i < value.size() // extending c
+			{
+				c.list().add( importObject( newConfigs, iid, i, value.get( i ) ) );
+			}
+		}
+		
+		// trim c if it is too long.
+		
+		while (c.list().size() > value.size())
+			c.list().remove( value.size() );
+	}
+
+	private void destroyList( List<Conf> newConfigs, int iid, Conf c )
+	{
+		newConfigs.set( iid, null );
+		for (int i: c.list())
+			destroy( newConfigs, i );
+	}
 	
 	private int importMap( List<Conf> c, Integer parent, Object nameOrIndex, Map<?, ?> value )
 	{
 		Map<String, Integer> v = new HashMap<String, Integer>( value.size() * 4 / 3 + 1 );
 		int k = c.size();
-		c.add( new Conf( parent, nameOrIndex, v ) );
+		c.add( new Conf( parent, nameOrIndex, Collections.unmodifiableMap( v ) ) );
 		
 		for (Map.Entry<?, ?> me: value.entrySet() )
 		{
@@ -794,6 +909,84 @@ public class YamlConfig implements ConfigurationServer
 		}
 		
 		return k;
+	}
+
+	private void importMap( List<Conf> newConfigs, Set<Integer> newSubs,
+		List<Integer> changeSet, int iid, Integer parent, Object nameOrIndex,
+		Map<?, ?> value )
+	{
+		Map<String, Integer> v = new HashMap<String, Integer>( value.size() * 4 / 3 + 1 );
+		newConfigs.set( iid, new Conf( parent, nameOrIndex, Collections.unmodifiableMap( v ) ) );
+		
+		for (Map.Entry<?, ?> me: value.entrySet() )
+		{
+			String n = (String) me.getKey();
+			v.put( n, importObject( newConfigs, iid, n, me.getValue() ) );
+		}
+	}
+
+	private void updateMap( List<Conf> newConfigs, Set<Integer> newSubs,
+		List<Integer> changeSet, int iid, Integer parent, Object nameOrIndex,
+		Map<?, ?> value, Conf c )
+	{
+		Map<String, Integer> newMap = new HashMap<String, Integer>( c.map() );
+		
+		// Look for names in the current map which are not in the new.
+		
+		for (Map.Entry<String, Integer> me: c.map().entrySet())
+		{
+			String name = me.getKey();
+			Integer siid = me.getValue();
+			if (!value.containsKey( name ))
+			{
+				// this name will have to be deleted.
+				newMap.remove( name );
+				destroy( newConfigs, siid );
+			}
+		}
+		
+		// Look for names in the new map which are not in the current.
+		
+		for (Map.Entry<?, ?> me: value.entrySet())
+		{
+			String name = (String) me.getKey();
+			Object v = me.getValue();
+			if (!newMap.containsKey( name ))
+			{
+				// import the object
+				int k = importObject( newConfigs, iid, name, v );
+				newMap.put( name, k );
+			}
+			else
+			{
+				// update the object
+				Integer siid = newMap.get( name );
+				updateObject( newConfigs, newSubs, changeSet, siid, iid, name, v );
+			}
+		}
+		
+		newConfigs.set( iid, new Conf( parent, nameOrIndex, Collections.unmodifiableMap( newMap ) ) );
+	}
+
+	private void destroy( List<Conf> newConfigs, int iid )
+	{
+		Conf c = newConfigs.get( iid );
+		if (c.isMap())
+			destroyMap( newConfigs, iid, c );
+		else if (c.isList())
+			destroyList( newConfigs, iid, c );
+		else if (c.isScalar())
+			newConfigs.set( iid, null );
+		else
+			throw new UnsupportedOperationException(
+				"don't know how to destroy "+c.value.getClass() );
+	}
+
+	private void destroyMap( List<Conf> newConfigs, int iid, Conf c )
+	{
+		newConfigs.set( iid, null );
+		for (int i: c.map().values())
+			destroy( newConfigs, i );
 	}
 	
 	private Conf getConf0( int iid )
@@ -906,6 +1099,11 @@ public class YamlConfig implements ConfigurationServer
 			this.value = value;
 		}
 
+		public boolean isScalar()
+		{
+			return valueIsScalar( value );
+		}
+
 		public String getPath()
 		{
 			if (isRoot())
@@ -952,11 +1150,11 @@ public class YamlConfig implements ConfigurationServer
 			return nameOrIndex.toString();
 		}
 
-		public Integer parent;
+		public final Integer parent;
 		
-		public Object nameOrIndex;
+		public final Object nameOrIndex;
 		
-		public Object value;
+		public final Object value;
 		
 		public boolean subcribed;
 		
@@ -977,12 +1175,12 @@ public class YamlConfig implements ConfigurationServer
 		
 		public boolean isList()
 		{
-			return value instanceof List;
+			return valueIsList( value );
 		}
 
 		public boolean isMap()
 		{
-			return value instanceof Map;
+			return valueIsMap( value );
 		}
 		
 		@SuppressWarnings("unchecked")
@@ -1119,7 +1317,7 @@ public class YamlConfig implements ConfigurationServer
 			if (isMap())
 				return getMap0( depth );
 			
-			throw new IllegalArgumentException( "cannot convert value to Map" );
+			throw new IllegalArgumentException( "cannot convert value to Map: "+value.getClass() );
 		}
 
 		private Map<?, ?> getMap0( Integer depth )
@@ -1143,5 +1341,10 @@ public class YamlConfig implements ConfigurationServer
 			}
 			return m;
 		}
+	}
+
+	void setInterval( int newInterval )
+	{
+		INTERVAL = newInterval;
 	}
 }
