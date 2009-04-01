@@ -712,24 +712,20 @@ public class YamlConfig implements ConfigurationServer
 		Object value )
 	{
 		if (valueIsList( value ))
-		{
 			return importList( c, parent, nameOrIndex, (List<?>) value );
-		}
-		else if (valueIsMap( value ))
-		{
+		
+		if (valueIsMap( value ))
 			return importMap( c, parent, nameOrIndex, (Map<?, ?>) value );
-		}
-		else if (valueIsScalar( value ))
+		
+		if (valueIsScalar( value ))
 		{
 			int k = c.size();
 			c.add( new Conf( parent, nameOrIndex, value ) );
 			return k;
 		}
-		else
-		{
-			throw new IllegalArgumentException(
-				"don't know how to import type "+value.getClass() );
-		}
+		
+		throw new IllegalArgumentException(
+			"don't know how to import type "+value.getClass() );
 	}
 	
 	private static boolean valueIsScalar( Object value )
