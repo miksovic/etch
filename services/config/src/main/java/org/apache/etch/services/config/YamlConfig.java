@@ -664,38 +664,38 @@ public class YamlConfig implements ConfigurationServer
 	
 	private void updateConfig() throws ConfigurationException
 	{
-		if (file.lastModified() != lastModified)
+		if (file.lastModified() == lastModified)
+			return;
+		
+		long t0 = file.lastModified();
+		Object o = loadConfig0( file );
+		long t1 = file.lastModified();
+		
+		if (t1 != t0)
+			return;
+		
+		Set<Object> changeIds = new HashSet<Object>();
+		
+		synchronized (subs)
 		{
-			long t0 = file.lastModified();
-			Object o = loadConfig0( file );
-			long t1 = file.lastModified();
+			Map<Integer, Conf> newConfigs = new HashMap<Integer, Conf>( configs );
+			Set<Integer> newSubs = Collections.synchronizedSet(
+				new HashSet<Integer>( subs ) );
+			Set<Integer> changeSet = new HashSet<Integer>();
 			
-			if (t1 == t0)
-			{
-				Set<Object> changeIds = new HashSet<Object>();
-				
-				synchronized (subs)
-				{
-					Map<Integer, Conf> newConfigs = new HashMap<Integer, Conf>( configs );
-					Set<Integer> newSubs = Collections.synchronizedSet(
-						new HashSet<Integer>( subs ) );
-					Set<Integer> changeSet = new HashSet<Integer>();
-					
-					updateObject( newConfigs, newSubs, changeSet, 0,
-						null, null, o );
-					
-					// compute those ids in changeSet or their ancestors that
-					// are subscribed to.
-					computeChangeIds( changeIds, newConfigs, newSubs, changeSet );
+			updateObject( newConfigs, newSubs, changeSet, 0,
+				null, null, o );
+			
+			// compute those ids in changeSet or their ancestors that
+			// are subscribed to.
+			computeChangeIds( changeIds, newConfigs, newSubs, changeSet );
 
-					lastModified = t0;
-					configs = newConfigs;
-					subs = newSubs;
-				}
-				
-				fireConfigValuesChanged( changeIds.toArray() );
-			}
+			lastModified = t0;
+			configs = newConfigs;
+			subs = newSubs;
 		}
+		
+		fireConfigValuesChanged( changeIds.toArray() );
 	}
 
 	private void computeChangeIds( Set<Object> changeIds,
@@ -732,7 +732,7 @@ public class YamlConfig implements ConfigurationServer
 		if (valueIsScalar( value ))
 		{
 			int k = (int) idgen.next();
-			newConfigs.put( k, new Conf( parent, nameOrIndex, value ) );
+			newConfigs.put( k, new Conf( k, parent, nameOrIndex, value ) );
 			return k;
 		}
 		
@@ -819,16 +819,16 @@ public class YamlConfig implements ConfigurationServer
 			if (c.isMap())
 			{
 				destroyMap( newConfigs, newSubs, iid, c );
-				newConfigs.put( iid, new Conf( parent, nameOrIndex, value ) );
-				changeSet.add( iid );
+				newConfigs.put( iid, new Conf( iid, parent, nameOrIndex, value ) );
+				add( newConfigs, changeSet, iid );
 				return;
 			}
 			
 			if (c.isList())
 			{
 				destroyList( newConfigs, newSubs, iid, c );
-				newConfigs.put( iid, new Conf( parent, nameOrIndex, value ) );
-				changeSet.add( iid );
+				newConfigs.put( iid, new Conf( iid, parent, nameOrIndex, value ) );
+				add( newConfigs, changeSet, iid );
 				return;
 			}
 			
@@ -837,8 +837,8 @@ public class YamlConfig implements ConfigurationServer
 				if (value.equals( c.value ))
 					return;
 				
-				newConfigs.put( iid, new Conf( parent, nameOrIndex, value ) );
-				changeSet.add( iid );
+				newConfigs.put( iid, new Conf( iid, parent, nameOrIndex, value ) );
+				add( newConfigs, changeSet, iid );
 				return;
 			}
 		}
@@ -847,11 +847,20 @@ public class YamlConfig implements ConfigurationServer
 			value.getClass() + " from " + c.value.getClass() );
 	}
 
+	private void add( Map<Integer, Conf> newConfigs, Set<Integer> changeSet, int iid )
+	{
+		System.out.println( "changeSet.add( "+iid+" )" );
+		System.out.println( "  conf: "+newConfigs.get( iid ) );
+//		new Throwable().printStackTrace( System.out );
+		
+		changeSet.add( iid );
+	}
+
 	private int importList( Map<Integer, Conf> newConfigs, Integer parent, Object nameOrIndex, List<?> value )
 	{
 		List<Integer> v = new ArrayList<Integer>( value.size() );
 		int k = (int) idgen.next();
-		newConfigs.put( k, new Conf( parent, nameOrIndex, v ) );
+		newConfigs.put( k, new Conf( k, parent, nameOrIndex, Collections.unmodifiableList( v ) ) );
 		
 		int i = 0;
 		for (Object o: value )
@@ -865,8 +874,8 @@ public class YamlConfig implements ConfigurationServer
 		List<?> value )
 	{
 		List<Integer> v = new ArrayList<Integer>( value.size() );
-		newConfigs.put( iid, new Conf( parent, nameOrIndex, v ) );
-		changeSet.add( iid );
+		newConfigs.put( iid, new Conf( iid, parent, nameOrIndex, Collections.unmodifiableList( v ) ) );
+		add( newConfigs, changeSet, iid );
 		
 		int i = 0;
 		for (Object o: value )
@@ -877,29 +886,39 @@ public class YamlConfig implements ConfigurationServer
 		Set<Integer> changeSet, int iid, Integer parent, Object nameOrIndex,
 		List<?> value, Conf c )
 	{
-		int n = Math.max( value.size(), c.size() );
+		List<Integer> newList = new ArrayList<Integer>( c.list() );
+		boolean changed = false;
+		
+		int n = Math.max( value.size(), newList.size() );
 		for (int i = 0; i < n; i++)
 		{
-			if (i < value.size() && i < c.size())
+			if (i < value.size() && i < newList.size())
 			{
-				updateObject( newConfigs, newSubs, changeSet, c.list().get( i ), iid, i, value.get( i ) );
+				updateObject( newConfigs, newSubs, changeSet, newList.get( i ), iid, i, value.get( i ) );
 			}
-			else if (i < c.size()) // ran out of new values
+			else if (i < newList.size()) // ran out of new values (newList too long)
 			{
-				destroy( newConfigs, newSubs, c.list().get( i ) );
-				c.list().set( i, null );
+				destroy( newConfigs, newSubs, newList.get( i ) );
+				newList.set( i, null );
+				changed = true;
 				// this entry will eventually be removed...
 			}
-			else // i < value.size() // extending c
+			else // i < value.size() // extending newList
 			{
-				c.list().add( importObject( newConfigs, iid, i, value.get( i ) ) );
+				newList.add( importObject( newConfigs, iid, i, value.get( i ) ) );
+				changed = true;
 			}
 		}
 		
-		// trim c if it is too long.
+		// trim newList if it is too long.
 		
-		while (c.list().size() > value.size())
-			c.list().remove( value.size() );
+		while (newList.size() > value.size())
+			newList.remove( newList.size() - 1 );
+		
+		newConfigs.put( iid, new Conf( iid, parent, nameOrIndex, Collections.unmodifiableList( newList ) ) );
+		
+		if (changed)
+			add( newConfigs, changeSet, iid );
 	}
 
 	private void destroyList( Map<Integer, Conf> newConfigs, Set<Integer> newSubs, int iid, Conf c )
@@ -914,7 +933,7 @@ public class YamlConfig implements ConfigurationServer
 	{
 		Map<String, Integer> v = new HashMap<String, Integer>( value.size() * 4 / 3 + 1 );
 		int k = (int) idgen.next();
-		newConfigs.put( k, new Conf( parent, nameOrIndex, Collections.unmodifiableMap( v ) ) );
+		newConfigs.put( k, new Conf( k, parent, nameOrIndex, Collections.unmodifiableMap( v ) ) );
 		
 		for (Map.Entry<?, ?> me: value.entrySet() )
 		{
@@ -930,8 +949,8 @@ public class YamlConfig implements ConfigurationServer
 		Map<?, ?> value )
 	{
 		Map<String, Integer> v = new HashMap<String, Integer>( value.size() * 4 / 3 + 1 );
-		newConfigs.put( iid, new Conf( parent, nameOrIndex, Collections.unmodifiableMap( v ) ) );
-		changeSet.add( iid );
+		newConfigs.put( iid, new Conf( iid, parent, nameOrIndex, Collections.unmodifiableMap( v ) ) );
+		add( newConfigs, changeSet, iid );
 		
 		for (Map.Entry<?, ?> me: value.entrySet() )
 		{
@@ -945,6 +964,7 @@ public class YamlConfig implements ConfigurationServer
 		Map<?, ?> value, Conf c )
 	{
 		Map<String, Integer> newMap = new HashMap<String, Integer>( c.map() );
+		boolean changed = false;
 		
 		// Look for names in the current map which are not in the new.
 		
@@ -957,6 +977,7 @@ public class YamlConfig implements ConfigurationServer
 				// this name will have to be deleted.
 				newMap.remove( name );
 				destroy( newConfigs, newSubs, siid );
+				changed = true;
 			}
 		}
 		
@@ -971,6 +992,7 @@ public class YamlConfig implements ConfigurationServer
 				// import the object
 				int k = importObject( newConfigs, iid, name, v );
 				newMap.put( name, k );
+				changed = true;
 			}
 			else
 			{
@@ -980,8 +1002,10 @@ public class YamlConfig implements ConfigurationServer
 			}
 		}
 		
-		newConfigs.put( iid, new Conf( parent, nameOrIndex, Collections.unmodifiableMap( newMap ) ) );
-		changeSet.add( iid );
+		newConfigs.put( iid, new Conf( iid, parent, nameOrIndex, Collections.unmodifiableMap( newMap ) ) );
+		
+		if (changed)
+			add( newConfigs, changeSet, iid );
 	}
 
 	private void destroy( Map<Integer, Conf> newConfigs, Set<Integer> newSubs, int iid )
@@ -1101,7 +1125,7 @@ public class YamlConfig implements ConfigurationServer
 	
 	private class Conf
 	{
-		public Conf( Integer parent, Object nameOrIndex, Object value )
+		public Conf( int id, Integer parent, Object nameOrIndex, Object value )
 		{
 			if (parent == null && nameOrIndex != null)
 				throw new IllegalArgumentException(
@@ -1114,10 +1138,13 @@ public class YamlConfig implements ConfigurationServer
 			if (value == null)
 				throw new IllegalArgumentException( "value == null" );
 			
+			this.id = id;
 			this.parent = parent;
 			this.nameOrIndex = nameOrIndex;
 			this.value = value;
 		}
+		
+		private final int id;
 
 		public boolean isScalar()
 		{
@@ -1181,7 +1208,7 @@ public class YamlConfig implements ConfigurationServer
 		@Override
 		public String toString()
 		{
-			return String.format( "Conf parent %s nameOrIndex %s, value %s", parent, nameOrIndex, value );
+			return String.format( "Conf %d parent %s nameOrIndex %s, value %s", id, parent, nameOrIndex, value );
 		}
 		
 		///CLOVER:ON

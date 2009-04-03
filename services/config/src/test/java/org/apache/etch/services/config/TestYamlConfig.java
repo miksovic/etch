@@ -21,7 +21,6 @@
 package org.apache.etch.services.config;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1090,14 +1089,11 @@ public class TestYamlConfig
 		Object r = c.getRoot();
 		Assert.assertNotNull( r );
 		
-		Assert.assertFalse( client.changed.contains( r ) );
-		Assert.assertEquals( 0, client.changed.size() );
+		Assert.assertEquals( set(), client.changed );
 		
 		c.subscribe( r );
-		Thread.sleep( 1000 );
-		
-		Assert.assertTrue( client.changed.contains( r ) );
-		Assert.assertEquals( 1, client.changed.size() );
+		Thread.sleep( 100 );
+		Assert.assertEquals( set( r ), client.changed );
 	}
 	
 	/** @throws Exception */
@@ -1112,14 +1108,11 @@ public class TestYamlConfig
 		Object x = c.getConfigPath( r, "users" );
 		Assert.assertNotNull( x );
 		
-		Assert.assertFalse( client.changed.contains( x ) );
-		Assert.assertEquals( 0, client.changed.size() );
+		Assert.assertEquals( set(), client.changed );
 		
 		c.subscribe( x );
-		Thread.sleep( 1000 );
-		
-		Assert.assertTrue( client.changed.contains( x ) );
-		Assert.assertEquals( 1, client.changed.size() );
+		Thread.sleep( 100 );
+		Assert.assertEquals( set( x ), client.changed );
 	}
 	
 	/** @throws Exception */
@@ -1137,17 +1130,15 @@ public class TestYamlConfig
 		Object y = c.getConfigPath( r, "primes" );
 		Assert.assertNotNull( y );
 
-		Assert.assertFalse( client.changed.contains( x ) );
-		Assert.assertFalse( client.changed.contains( y ) );
-		Assert.assertEquals( 0, client.changed.size() );
+		Assert.assertEquals( set(), client.changed );
 
 		c.subscribe( x );
-		c.subscribe( y );
-		Thread.sleep( 1000 );
+		Thread.sleep( 100 );
+		Assert.assertEquals( set( x ), client.changed );
 
-		Assert.assertTrue( client.changed.contains( x ) );
-		Assert.assertTrue( client.changed.contains( y ) );
-		Assert.assertEquals( 2, client.changed.size() );
+		c.subscribe( y );
+		Thread.sleep( 100 );
+		Assert.assertEquals( set( y ), client.changed );
 	}
 	
 	/** @throws Exception */
@@ -1616,6 +1607,38 @@ public class TestYamlConfig
 		Assert.assertEquals( list( "fish", map( "a", 5, "b", 6, "c", 7 ), list( 2, 3, 4 ), "bear" ), c.getListPath( root, "list", null ) );
 	}
 	
+	/** @throws Exception */
+	@Test
+	public void subscribeUpdate0() throws Exception
+	{
+		setupUpdate( UPDATE+0, "." );
+		Assert.assertEquals( set(), client.changed );
+	}
+	
+	/** @throws Exception */
+	@Test
+	public void subscribeUpdate1a() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+1, "." );
+		Assert.assertEquals( set( c.getConfigPath( c.getRoot(), "." ) ), client.changed );
+	}
+	
+	/** @throws Exception */
+	@Test
+	public void subscribeUpdate1b() throws Exception
+	{
+		YamlConfig c = setupUpdate( UPDATE+1, "foo" );
+		Assert.assertEquals( set( c.getConfigPath( c.getRoot(), "foo" ) ), client.changed );
+	}
+	
+	/** @throws Exception */
+	@Test
+	public void subscribeUpdate1c() throws Exception
+	{
+		setupUpdate( UPDATE+1, "bar" );
+		Assert.assertEquals( set(), client.changed );
+	}
+	
 	private void testLoadConfig( String name, boolean expected )
 		throws Exception
 	{
@@ -1642,19 +1665,24 @@ public class TestYamlConfig
 			Assert.assertEquals( size, c.size( node ) );
 	}
 	
-	private YamlConfig setupUpdate( String updateConfig ) throws Exception
+	private YamlConfig setupUpdate( String updateConfig, String path ) throws Exception
 	{
 		YamlConfig c = new YamlConfig( client, UPDATE+0 );
 		client.setServer( c );
 		Object root = c.getRoot();
 		
 		c.setInterval( 50 );
-		c.subscribe( root );
+		c.subscribePath( root, path );
 		c.setConfig( updateConfig );
 		Thread.sleep( 1000 );
 		c.unsubscribeAll();
 		
 		return c;
+	}
+	
+	private YamlConfig setupUpdate( String updateConfig ) throws Exception
+	{
+		return setupUpdate( updateConfig, "." );
 	}
 	
 	private List<?> list( Object ... objs )
@@ -1674,19 +1702,29 @@ public class TestYamlConfig
 		return map;
 	}
 	
+	private Set<?> set( Object ... objs )
+	{
+		Set<Object> set = new HashSet<Object>();
+		for (Object o: objs)
+			set.add( o );
+		return set;
+	}
+	
 	private static class MyConfigurationClient implements ConfigurationClient
 	{
 		public void configValuesChanged( Object[] updated )
 		{
+			Set<Object> changed = new HashSet<Object>();
 			for (Object id: updated)
 			{
 				System.out.println( "id changed: "+id );
 				System.out.println( "path changed: "+server.getPath( id ) );
 				changed.add( id );
 			}
+			this.changed = changed;
 		}
 		
-		private final Set<Object> changed = Collections.synchronizedSet( new HashSet<Object>() );
+		private Set<Object> changed = new HashSet<Object>();
 
 		public void setServer( ConfigurationServer server )
 		{
